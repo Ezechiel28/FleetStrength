@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fleet Information</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/xlsx/dist/xlsx.full.min.js"></script>
+</head>
+<body class="bg-light">
+
+<div class="container mt-5 mb-5">
+
+  <div class="row justify-content-start">
+
+    <div class="col-md-5 col-lg-4">
+      <div class="card shadow-sm border-0">
+        <div class="card-body p-3">
+          <h5 class="card-title text-center mb-3">Fleet Info</h5>
+          <form id="fleetForm">
+            <div class="mb-2">
+              <label for="fleetName" class="form-label mb-1">Fleet Name</label>
+              <input type="text" class="form-control form-control-sm" id="fleetName" name="fleetName" required placeholder="Input Value" />
+            </div>
+            <div class="mb-2">
+              <label for="vesselCount" class="form-label mb-1">Number of Vessels</label>
+              <input type="number" class="form-control form-control-sm" id="vesselCount" name="vesselCount" min="1" required placeholder="Input Value" />
+            </div>
+            <div class="d-grid mt-3">
+              <div class="d-grid mt-3">
+                <button type="button" class="btn btn-sm btn-success" id="downloadXlsxBtn">Download Table as XLSX</button>
+                <button type="button" class="btn btn-sm btn-warning mt-2" id="downloadChartPngBtn">Download Chart as PNG</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4 col-lg-3">
+      <div class="card shadow-sm border-0">
+        <div class="card-body p-3">
+          <h5 class="card-title text-center mb-3">TMF Calculator</h5>
+          <div class="mb-2">
+            <label for="moContract" class="form-label mb-1">Months of Contract</label>
+            <input type="number" min="0" step="1" class="form-control form-control-sm" id="moContract" placeholder="Input Value" required />
+          </div>
+          <div class="mb-2">
+            <label for="moVacation" class="form-label mb-1">Months of Vacation</label>
+            <input type="number" min="0" step="1" class="form-control form-control-sm" id="moVacation" placeholder="Input Value" required />
+          </div>
+          <div class="mt-3">
+            <label class="form-label mb-1">Result:</label>
+            <input type="text" class="form-control form-control-sm" id="tmfResult" readonly placeholder="Result will appear here" />
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="row justify-content-center mt-5">
+    <div class="col-12">
+      <div class="table-responsive">
+        <table class="table table-bordered table-sm text-center align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Position</th>
+              <th>No. of Positions</th>
+              <th>No. of Existing Crew</th>
+              <th>Target Manning Factor</th>
+              <th>Existing Manning Factor</th>
+              <th>No. of Required Crew</th>
+              <th>Extra/Gap</th>
+            </tr>
+          </thead>
+          <tbody id="crewTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Totals Summary -->
+  <div class="row justify-content-start mt-3">
+    <div class="col-md-6 col-lg-5">
+      <div class="card shadow-sm border-0">
+        <div class="card-body p-3">
+          <h6 class="card-title text-center mb-3">Crew Totals</h6>
+          <div class="d-flex justify-content-between">
+            <div><strong>Total Existing Crew:</strong></div>
+            <div><input type="text" id="totalExistingCrew" class="form-control form-control-sm text-center" readonly></div>
+          </div>
+          <div class="d-flex justify-content-between mt-2">
+            <div><strong>Total Required Crew:</strong></div>
+            <div><input type="text" id="totalRequiredCrew" class="form-control form-control-sm text-center" readonly></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chart container below the table -->
+  <div class="row mt-4">
+    <div class="col-12">
+      <canvas id="fleetChart" style="max-height: 500px;"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const positions = [
+  "Master", "Chief Officer", "Chief Engineer", "2nd Engineer", "2nd Officer",
+  "3rd Officer", "3rd Officer jr", "3rd Engineer", "4th Engineer", "4th engineer jr",
+  "Electrician", "Electrician Cadet", "Bosun", "Able Body Seaman", "Ordinary Seaman"
+];
+
+const tbody = document.getElementById("crewTableBody");
+const vesselCountInput = document.getElementById("vesselCount");
+
+positions.forEach((position, rowIndex) => {
+  const row = document.createElement("tr");
+
+  const posCell = document.createElement("td");
+  posCell.textContent = position;
+  row.appendChild(posCell);
+
+  let cell = document.createElement("td");
+  let input = document.createElement("input");
+  input.type = "number";
+  input.min = "0";
+  input.step = "1";
+  input.className = "form-control form-control-sm text-center";
+  input.placeholder = "Input Value";
+  input.dataset.row = rowIndex;
+  input.dataset.col = 1;
+  input.addEventListener("input", onInputChange);
+  cell.appendChild(input);
+  row.appendChild(cell);
+
+  cell = document.createElement("td");
+  input = document.createElement("input");
+  input.type = "number";
+  input.min = "0";
+  input.step = "1";
+  input.className = "form-control form-control-sm text-center";
+  input.placeholder = "Input Value";
+  input.dataset.row = rowIndex;
+  input.dataset.col = 2;
+  input.addEventListener("input", onInputChange);
+  cell.appendChild(input);
+  row.appendChild(cell);
+
+  cell = document.createElement("td");
+  input = document.createElement("input");
+  input.type = "number";
+  input.min = "0";
+  input.step = "any";
+  input.className = "form-control form-control-sm text-center";
+  input.placeholder = "Input Value";
+  input.dataset.row = rowIndex;
+  input.dataset.col = 3;
+  input.addEventListener("input", onInputChange);
+  cell.appendChild(input);
+  row.appendChild(cell);
+
+  cell = document.createElement("td");
+  input = document.createElement("input");
+  input.type = "number";
+  input.readOnly = true;
+  input.className = "form-control form-control-sm text-center";
+  input.placeholder = "Auto-calculated";
+  input.dataset.row = rowIndex;
+  input.dataset.col = 4;
+  cell.appendChild(input);
+  row.appendChild(cell);
+
+  cell = document.createElement("td");
+  input = document.createElement("input");
+  input.type = "number";
+  input.min = "0";
+  input.step = "1";
+  input.className = "form-control form-control-sm text-center";
+  input.placeholder = "Input Value";
+  input.dataset.row = rowIndex;
+  input.dataset.col = 5;
+  input.addEventListener("input", onInputChange);
+  cell.appendChild(input);
+  row.appendChild(cell);
+
+  cell = document.createElement("td");
+  input = document.createElement("input");
+  input.type = "number";
+  input.readOnly = true;
+  input.className = "form-control form-control-sm text-center";
+  input.placeholder = "Auto-calculated";
+  input.dataset.row = rowIndex;
+  input.dataset.col = 6;
+  cell.appendChild(input);
+  row.appendChild(cell);
+
+  tbody.appendChild(row);
+});
+
+function onInputChange(e) {
+  const input = e.target;
+  const val = input.value;
+  const col = parseInt(input.dataset.col, 10);
+
+  if (col !== 3) {
+    if (val.includes(".")) input.value = val.split(".")[0];
+  }
+
+  if (input.value && parseFloat(input.value) < 0) {
+    input.value = "";
+  }
+
+  computeCalculations();
+  updateChart();
+}
+
+function computeCalculations() {
+  computeExistingManningFactor();
+  computeGap();
+  updateTotals();  // <-- Added this line to update totals after calculations
+}
+
+function computeExistingManningFactor() {
+  const vesselCount = parseFloat(vesselCountInput.value);
+  if (isNaN(vesselCount) || vesselCount <= 0) {
+    const rows = tbody.querySelectorAll("tr");
+    rows.forEach(row => {
+      const inputs = row.querySelectorAll("input");
+      inputs[3].value = "";
+    });
+    return;
+  }
+
+  const rows = tbody.querySelectorAll("tr");
+  rows.forEach(row => {
+    const inputs = row.querySelectorAll("input");
+    const existingCrew = parseFloat(inputs[1].value) || 0;
+    const emfInput = inputs[3];
+
+    if (existingCrew > 0) {
+      const emf = existingCrew / vesselCount;
+      emfInput.value = emf.toFixed(1);
+    } else {
+      emfInput.value = "";
+    }
+  });
+}
+
+function computeGap() {
+  const rows = tbody.querySelectorAll("tr");
+  rows.forEach(row => {
+    const inputs = row.querySelectorAll("input");
+
+    const existingCrewVal = inputs[1].value; // col=2
+    const requiredCrewVal = inputs[4].value; // col=5
+    const gapInput = inputs[5]; // col=6 (gap)
+
+    // Remove previous style classes or inline styles
+    gapInput.classList.remove("gap-positive", "gap-negative");
+    gapInput.style.backgroundColor = "";
+    gapInput.value = "";  // clear first
+
+    if (existingCrewVal === "" || requiredCrewVal === "") {
+      return; // nothing to calculate
+    }
+
+    const existingCrew = parseInt(existingCrewVal, 10);
+    const requiredCrew = parseInt(requiredCrewVal, 10);
+
+    if (isNaN(existingCrew) || isNaN(requiredCrew)) {
+      return; // invalid inputs, do nothing
+    }
+
+    const gap = existingCrew - requiredCrew;
+    gapInput.value = gap;
+
+    // Apply background color depending on gap sign
+    if (gap > 0) {
+      gapInput.style.backgroundColor = "#d4edda"; // light green
+    } else if (gap < 0) {
+      gapInput.style.backgroundColor = "#f8d7da"; // light red
+    }
+  });
+}
+
+function updateTotals() {
+  let totalExisting = 0;
+  let totalRequired = 0;
+
+  tbody.querySelectorAll("tr").forEach(row => {
+    const inputs = row.querySelectorAll("input");
+    // Existing Crew = col=2, index 1
+    const existingCrew = parseInt(inputs[1].value) || 0;
+    // Required Crew = col=5, index 4
+    const requiredCrew = parseInt(inputs[4].value) || 0;
+
+    totalExisting += existingCrew;
+    totalRequired += requiredCrew;
+  });
+
+  const totalExistingCrewInput = document.getElementById("totalExistingCrew");
+  const totalRequiredCrewInput = document.getElementById("totalRequiredCrew");
+
+  if (totalExistingCrewInput) totalExistingCrewInput.value = totalExisting;
+  if (totalRequiredCrewInput) totalRequiredCrewInput.value = totalRequired;
+}
+
+const moContractInput = document.getElementById("moContract");
+const moVacationInput = document.getElementById("moVacation");
+const tmfResult = document.getElementById("tmfResult");
+
+function calculateTMF() {
+  const moContract = parseInt(moContractInput.value, 10);
+  const moVacation = parseInt(moVacationInput.value, 10);
+
+  if (!isNaN(moContract) && moContract > 0) {
+    const result = (moContract + (moVacation || 0)) / moContract;
+    tmfResult.value = result.toFixed(1);
+  } else {
+    tmfResult.value = "";
+  }
+}
+
+[moContractInput, moVacationInput].forEach(input => {
+  input.addEventListener("input", () => {
+    input.value = input.value.replace(/\D/g, "");
+    if (parseInt(input.value, 10) < 0) input.value = "";
+    calculateTMF();
+  });
+});
+
+vesselCountInput.addEventListener("input", () => {
+  if (vesselCountInput.value && parseInt(vesselCountInput.value) < 1) vesselCountInput.value = "";
+  computeCalculations();
+  updateChart();
+});
+
+tbody.addEventListener("input", () => {
+  computeCalculations();
+  updateChart();
+});
+
+// Chart.js setup
+
+const ctx = document.getElementById("fleetChart").getContext("2d");
+
+const chartConfig = {
+  type: 'bar',
+  data: {
+    labels: positions,
+    datasets: [
+      {
+        label: 'No. of Required Crew',
+        data: [], // will be filled in updateChart
+        backgroundColor: 'rgba(255, 99, 132, 0.7)', // red-ish
+        borderColor: 'rgba(255, 99, 132, 1)',
+        borderWidth: 1
+      },
+      {
+        label: 'No. of Existing Crew',
+        data: [], // will be filled in updateChart
+        backgroundColor: 'rgba(54, 162, 235, 0.7)', // blue-ish
+        borderColor: 'rgba(54, 162, 235, 1)',
+        borderWidth: 1
+      }
+    ]
+  },
+  options: {
+    responsive: true,
+    scales: {
+      y: {
+        beginAtZero: true,
+        ticks: {
+          precision: 0
+        },
+        title: {
+          display: true,
+          text: 'Count'
+        }
+      },
+      x: {
+        title: {
+          display: true,
+          text: 'Position'
+        }
+      }
+    },
+    plugins: {
+      legend: {
+        display: true // show legend now
+      },
+      tooltip: {
+        enabled: true
+      }
+    }
+  }
+};
+
+const fleetChart = new Chart(ctx, chartConfig);
+
+function updateChart() {
+  const rows = tbody.querySelectorAll("tr");
+  const requiredCrewData = [];
+  const existingCrewData = [];
+
+  rows.forEach(row => {
+    const inputs = row.querySelectorAll("input");
+    // No. of Required Crew is at col=5 in your input dataset (index 4)
+    const requiredCrew = parseInt(inputs[4].value, 10) || 0;
+    // No. of Existing Crew is at col=2 in your input dataset (index 1)
+    const existingCrew = parseInt(inputs[1].value, 10) || 0;
+
+    requiredCrewData.push(requiredCrew);
+    existingCrewData.push(existingCrew);
+  });
+
+  fleetChart.data.datasets[0].data = requiredCrewData;
+  fleetChart.data.datasets[1].data = existingCrewData;
+
+  fleetChart.update();
+}
+
+// Initial calls to set totals and chart at page load
+computeCalculations();
+updateChart();
+
+// Change the event listener to the new button ID and function name
+document.getElementById("downloadXlsxBtn").addEventListener("click", downloadXLSX);
+
+function downloadXLSX() {
+    // Create a new workbook
+    const wb = XLSX.utils.book_new();
+
+    // --- Prepare Fleet Info Data ---
+    const fleetName = document.getElementById("fleetName").value;
+    const vesselCount = document.getElementById("vesselCount").value;
+
+    let fleetInfoData = [];
+    if (fleetName) {
+        fleetInfoData.push(["Fleet Name:", fleetName]);
+    }
+    if (vesselCount) {
+        fleetInfoData.push(["Number of Vessels:", vesselCount]);
+    }
+    if (fleetInfoData.length > 0) {
+        fleetInfoData.push([]); // Add an empty row for separation
+    }
+
+    // --- Prepare Table Data ---
+    const tableHeaders = Array.from(document.querySelectorAll("thead th")).map(th => th.textContent.trim());
+    const tableRowsData = [];
+
+    tbody.querySelectorAll("tr").forEach(row => {
+        const rowData = [];
+        Array.from(row.querySelectorAll("td")).forEach(cell => {
+            const input = cell.querySelector("input");
+            if (input) {
+                rowData.push(input.value); // Use the input's value
+            } else {
+                rowData.push(cell.textContent.trim()); // Use cell's text content
+            }
+        });
+        tableRowsData.push(rowData);
+    });
+
+    // Combine fleet info, headers, and table data
+    const tableDataSet = [...fleetInfoData, tableHeaders, ...tableRowsData];
+
+    // --- Prepare Totals Data ---
+    const totalExistingCrew = document.getElementById("totalExistingCrew").value;
+    const totalRequiredCrew = document.getElementById("totalRequiredCrew").value;
+
+    const totalsData = [
+        [], // Empty row for separation
+        ["Crew Totals"],
+        ["Total Existing Crew:", totalExistingCrew],
+        ["Total Required Crew:", totalRequiredCrew]
+    ];
+
+    // Combine all data into a single array of arrays
+    const allData = [...tableDataSet, ...totalsData];
+
+    // Convert the array of arrays to a worksheet
+    const ws = XLSX.utils.aoa_to_sheet(allData);
+
+    // Append the worksheet to the workbook
+    XLSX.utils.book_append_sheet(wb, ws, "Fleet Data");
+
+    // Write the workbook and trigger download
+    XLSX.writeFile(wb, "fleet_crew_data.xlsx");
+}
+
+// New event listener for the chart download button
+document.getElementById("downloadChartPngBtn").addEventListener("click", downloadChartAsPNG);
+
+function downloadChartAsPNG() {
+    // Get the canvas element where the chart is rendered
+    const chartCanvas = document.getElementById("fleetChart");
+
+    // Get the data URL of the canvas content as a PNG image
+    // The toDataURL() method is a native Canvas API method
+    const imageUrl = chartCanvas.toDataURL("image/png");
+
+    // Create a temporary link element
+    const link = document.createElement("a");
+    link.href = imageUrl; // Set the href to the image data URL
+    link.download = "fleet_chart.png"; // Set the filename for the download
+
+    // Append the link to the body and trigger the click
+    document.body.appendChild(link); // Required for Firefox
+    link.click();
+
+    // Clean up the temporary link
+    document.body.removeChild(link);
+}
+
+</script>
+
+
+</body>
+</html>
